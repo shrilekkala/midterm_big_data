@@ -6,7 +6,7 @@
 library(readtext)
 library(SnowballC)
 
-setwd("/Users/vrockova/Desktop/Big Data/Midterm/headlines")
+# setwd("/Users/vrockova/Desktop/Big Data/Midterm/headlines")
 
 data<-readtext("RedditNews.csv",skip=1)
 

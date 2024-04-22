@@ -4,13 +4,18 @@ library(readtext)
 library(SnowballC)
 library(tidytext)
 
-setwd("/Users/vrockova/Desktop/MIDTERM")
+# setwd("/Users/vrockova/Desktop/MIDTERM")
 
 # Let's get to know the data a bit
 
-data<-readtext("RedditNews.csv",skip=1)
+data = read.csv("RedditNews.csv", header = FALSE, skip = 1)
+
+data[,2:3] = data[,1:2]
+data[,1] = paste0("RedditNews_",rownames(data))
 
 date<-data[2] # this is the day of the news
+
+
 
 subset<-date=="7/1/16" # let's take a look at news headlines on 7/1/16
 
