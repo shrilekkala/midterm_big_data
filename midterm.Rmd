@@ -25,6 +25,7 @@ library(readtext)
 library(SnowballC)
 library(tidytext)
 library(gamlr)
+library(parallel)
 ```
 
 ```{r}
@@ -54,7 +55,6 @@ length(words)
 ```
 
 ```{r}
-
 # Read the word-day pairings
 doc_word<-read.table("WordFreqFinal.csv",header=F)
 
@@ -82,11 +82,131 @@ dim(spm) # we end up with 3183 words
 
 ## Question 1 Marginal Significance Screening and False Discovery
 
+Setup
+
+```{r}
+#  *** FDR *** analysis
+spm<-spm[-ndays,]
+time<-dj[-ndays,1]
+
+# Take returns 
+par(mfrow=c(1,2))
+R<-(dj[-ndays,7]-dj[-1,7])/dj[-1,7]
+plot(R~as.Date(time),type="l")
+
+# Take the log of the maximal spread
+V<-log(dj[-ndays,3]-dj[-ndays,4])
+plot(V~as.Date(time),type="l")
+```
+
+```{r}
+# FDR: we want to pick a few words that correlate with the outcomes (returns and volatility)
+
+# create a dense matrix of word presence
+P <- as.data.frame(as.matrix(spm>0))
+
+# we will practice parallel computing now
+margreg <- function(x){
+	fit <- lm(Outcome~x)
+	sf <- summary(fit)
+	return(sf$coef[2,4]) 
+}
+```
+
 ### 1.1 Plot the p-values and comment on their distributions (for both outcomes V and R). Is there enough signal to predict prices and volatility?
+
+```{r}
+# **** Analysis for Returns ****
+cl <- makeCluster(detectCores())
+
+Outcome<-R
+clusterExport(cl,"Outcome") 
+
+# run the regressions in parallel
+mrgpvals_R <- unlist(parLapply(cl,P,margreg))
+
+stopCluster(cl)
+
+# **** Analysis for Volatility ****
+cl <- makeCluster(detectCores())
+
+Outcome <- V
+clusterExport(cl,"Outcome") 
+
+# run the regressions in parallel
+mrgpvals_V <- unlist(parLapply(cl,P,margreg))
+
+stopCluster(cl)
+```
+
+```{r}
+# Combine the p-values into a data frame for easy plotting
+pvals <- data.frame(Returns = mrgpvals_R, Volatility = mrgpvals_V)
+
+# Plotting the p-values
+# Plotting the histograms of p-values
+
+# Histogram for Returns
+hist(mrgpvals_R, breaks = 50, main = "Histogram of P-Values for Returns", xlab = "P-Value", ylab = "Frequency", col="blue")
+
+# Histogram for Volatility
+hist(mrgpvals_V, breaks = 50, main = "Histogram of P-Values for Volatility", xlab = "P-Value", ylab = "Frequency", col="red")
+
+```
+
+The null hypothesis is a uniform distribution of p-values which would mean all p-values having the same frequency.
+
+The histogram of p-values for returns, R, seems to be fairly uniform but seems to be somewhat skewed to the left, which suggests that there is likely to be little signal to predict the returns.
+
+However for volatility, V, the p-values have a clear spike near 0 and seem to be skewed towards the right. The large amount of p-values near 0 suggests there might indeed be a signal for some words to predict volatility.
 
 ### 1.2 What is the alpha value (p-value cutoff) associated with 10% False Discovery Rate? How many words are significant at this level? (Again analyze both outcomes V and R.) What are the advantages and disadvantages of FDR for word selection?
 
+```{r}
+# # To find the p-value cut off we first order the p values
+mrgpvals_R_ordered <- mrgpvals_R[order(mrgpvals_R, decreasing=F)]
+mrgpvals_V_ordered <- mrgpvals_V[order(mrgpvals_V, decreasing=F)]
+
+source("fdr.R")
+
+mgr_p_R = length(mrgpvals_R_ordered)
+mrg_cutoff_R <- fdr_cut(mrgpvals_R_ordered, q=0.1)
+mrg_cutoff_R
+
+mgr_p_V = length(mrgpvals_V_ordered)
+mrg_cutoff_V <- fdr_cut(mrgpvals_V_ordered, q=0.1)
+mrg_cutoff_V
+```
+
+At the 10% False Discovery rate, the p-value cutoff is:
+
+-   $1.026 \times 10^{-5}$ (4.s.f) for R
+
+-   $3.571 \times 10^{-4}$ (4.s.f) for V
+
+```{r}
+# Number of significant words at alpha level 0.1
+significant_R <- sum(mrgpvals_R < mrg_cutoff_R)
+significant_R
+significant_V <- sum(mrgpvals_V < mrg_cutoff_V)
+significant_V
+```
+
+At this FDR level, there are 0 words are significant for R and 11 words significant for V.
+
+\-
+
+The main advantages of using FDR analysis for word selection is the ability to handle large datasets 	and do computations in parallel. So as an initial stage for analyzing which words are important, this method is computationally efficient compared to others. Further, as we are explicitly controlling the expected number of false discoveries, this method allows for a more reliable selection of significant results.
+
+However, the FDR method relies on the assumption that each test is independent. This is not necessarily true for words in headlines as words can occur simultaneously. Further, we completely disregard the structure of groups of words / phrases by treating each word independently. Another disadvantage is that the FDR analysis only selects words based on the magnitude of the association but not their direction, so we cannot use this to select only words with positive or negative association.
+
 ### 1.3 Now, focus only on volatility V. Suppose you just mark the 20 smallest p-values as significant. How many of these discoveries do you expect to be false? Are the p-values independent? Discuss.
+
+Just marking the 20 smallest p-values without using any testing correction like FDR lacks statistical control over the expected number of false discoveries. So we cannot estimate the expected number of false discoveries. However, if we used the discoveries using a 10% FDR from above, then we can expect 10% of the 11 words, i.e. 1.1 of them to be false discoveries.
+
+However, it is unlikely that the p-values are independent as words in language are usually correlated. So some words are likely to appear next to each other, and the presence of one word could mean that another word is more likely to appear. This is true with news headlines which often have common or repeated phrases, which means that some words appear frequently with other words.
+
+So taking into account the lack of independence, we may assume that the expected number of false discoveries is even higher due to dependencies between words not being taken into account. So in conclusion, a more rigorous statistical method should be applied to find significant words rather than simply marking the smallest n as significant.
 
 \newpage
 
