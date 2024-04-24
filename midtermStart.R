@@ -87,14 +87,14 @@ par(mfrow=c(1,2))
 
 R<-(dj[-ndays,7]-dj[-1,7])/dj[-1,7]
 
-plot(R~time,type="l")
+plot(R~as.Date(time),type="l")
 
 
 # Take the log of the maximal spread
 
 V<-log(dj[-ndays,3]-dj[-ndays,4])
 
-plot(V~time,type="l")
+plot(V~as.Date(time),type="l")
 
 
 # FDR: we want to pick a few words that correlate with the outcomes (returns and volatility)
