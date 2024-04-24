@@ -280,17 +280,17 @@ What is the in-sample R2 now? Describe the LASSO path and pick the top 10 strong
 
 ```{r}
 # predict future volatility from past volatility
-Previous<-log(dj[-1,3]-dj[-1,4]) # remove the last return
-spm2<-cbind(Previous,spm) # add the previous return to the model matrix
+Previous <- log(dj[-1,3]-dj[-1,4]) # remove the last return
+spm2 <- cbind(Previous,spm) # add the previous return to the model matrix
 colnames(spm2)[1]<-"previous" # the first column is the previous volatility
-lasso3<- gamlr(spm2, y=V, lambda.min.ratio=1e-3)
+lasso3 <- gamlr(spm2, y=V, lambda.min.ratio=1e-3)
 
 # Pick lambda using the AICc
 lambda_3 = lasso3$lambda[which.min(AICc(lasso3))]
 
 # Compute the in-sample R2
 dev_3 <- lasso3$deviance[which.min(AICc(lasso3))] # deviance #of the AICc selected model
-dev0_3<- lasso3$deviance[1] # null deviance
+dev0_3 <- lasso3$deviance[1] # null deviance
 paste0("The in-sample $R^2$ is: ", 1-dev_3/dev0_3)
 ```
 
@@ -407,11 +407,71 @@ The picture shows that our full sample AICc estimate is near the low end of the 
 
 ## Question 3 High-dimensional Controls and Double LASSO
 
-### 3.1 Explore a marginal regression (just a regression of $V_t$ on $V_{t - 1}$) to see if there is any cor- relation. Predict d from x (headlines words), and comment on the degree of confounding we can expect. Is there any information in d independent of x?
+### 3.1 Explore a marginal regression (just a regression of $V_t$ on $V_{t - 1}$) to see if there is any correlation. Predict d from x (headlines words), and comment on the degree of confounding we can expect. Is there any information in d independent of x?
+
+```{r}
+# High-dimensional Covariate Adjustment 
+d <- Previous # this is the treatment
+
+# marginal effect of past on present volatility
+summary(glm(V~d)) 
+```
+
+The coefficient of d is 0.51195 is positive and significant (p-value \<2e-16) which suggests a strong positive correlation between d and V. That is, for a one-unit increase in yesterday's volatility, we can expect an increase of $\approx$ 0.512 units in today's volatility.
+
+```{r}
+# LASSO model to predict d from x
+treat <- gamlr(spm, d, lambda.min.ratio=1e-4)
+
+# Isolate d_hat (the part of treatment that we can predict with x's)
+d_hat = predict(treat, spm)
+
+# Plot d_hat against d
+plot(d, drop(d_hat))
+abline(a=0, b=1, col=2)
+title("Predicted d vs actual d")
+
+# In-sample R2
+print(paste0("R2: ", cor(d, drop(d_hat))^2))
+```
+
+From the graph we observe that the predictions are fairly close to the actual values, but the slope of the trend differs from what we expect.
+
+Also the in-sample $R^2$ suggests that $\approx$ 36.5 % of the variance in d is explained by x (the words in the headlines).
+
+As the words explain more than 1/3 of the amount of variance in $V_{t-1}$, we can expect a moderate degree of confounding effect that should be controlled.
+
+However, there is still $\approx$ 63.5% of unexplained variance in $V_{t-1}$ which suggests that there is significant information in d that is independent of x.
 
 ### 3.2 Isolate the effect of $V_{t - 1}$ by running the causal (double) LASSO. Interpret this effect and compare it to the effect obtained from the naive LASSO.
 
+```{r}
+# Second Stage LASSO
+causal <-  gamlr(cbind(d, d_hat, spm), V, free=2)
+print(paste0("The coefficient of d from 2-stage LASSO is: ", coef(causal)["d",]))
+```
+
+```{r}
+# Naive LASSO
+naive <- gamlr(cbind(d, spm), V)
+print(paste0("The coefficient of d from naive LASSO is: ", coef(naive)["d",]))
+```
+
+The effect of $V_{t-1}$ from the causal LASSO is $\approx$ 0.36 which is fairly large, thus suggests that there is evidence that the previous day's volatility does have a moderate effect on the current day's volatility. So after controlling for confounding effects of the headline words, a 1 unit increase in yesterday's volatility leads to an increase of approximately 0.36 units in today's volatility.
+
+However we also observe that there is an effect when running naive LASSO, and in fact it is greater in magnitude ($\approx$ 0.46). This difference in magnitude might be attributed to the confounding influence of the words in the headlines.
+
 ### 3.3 Can we safely claim that the effect is causal?
+
+By implementing a double LASSO, we did manage to effectively control for the observed confounders x (the words in the headlines that might influence both $V_{t}$ and $V_{t-1}$), and the coefficient we obtained was not insignificant.
+
+However, this is just one part of the picture, as we have not controlled for all confounders, namely the unobserved ones that are not included in our datasets. These may still influence both $V_t$ and $V_{t-1}$ so we cannot conclude with certainty that there is a causal effect.
+
+Further, as with all statistical analyses, we need to make sure the model is correctly specified, and statistical assumptions are met. As discussed in question 1, the independence of words in the headlines may not be a reasonable assumption to make. And as we are dealing with financial data, it is unclear whether the assumption of normality for error terms still holds, which is necessary to interpret the model output.
+
+Finally, in order reach a stronger conclusion about causality, we should ideally implement further analyses that can either strengthen or disprove our claim, such as the use of instrumental variables, or more advanced LASSO methods.
+
+Thus although we cannot claim for certain the effect is causal, we can claim that there is a statistically significant association and so our double LASSO model suggests that there could be a potential causal effect.
 
 \newpage
 
