@@ -478,3 +478,67 @@ Thus although we cannot claim for certain the effect is causal, we can claim tha
 ## Bonus Freestyle Analysis
 
 ### Provide additional analysis of the data. Points will handed out only for insightful use of data mining tools, not for scattershot application of techniques.
+
+We will try to perform sentiment analysis of the news headlines to try and correlate it with stock market volatility.
+
+```{r}
+library(Matrix)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# Obtain sentiment dictionary
+sentiments <- get_sentiments("bing")
+# Assign scores to sentiments
+sentiments <- sentiments |> mutate(score = if_else(sentiment =="positive", 1, -1))
+
+# Convert the sparse matrix to a data frame
+word_data <- as.data.frame(as.matrix(spm), stringsAsFactors = FALSE)
+word_data$word <- rownames(spm)
+word_data_long <- reshape2::melt(word_data, id.vars = "word")
+names(word_data_long) <- c("day", "word", "frequency")
+word_data_long <- word_data_long |> filter(frequency > 0)
+
+# Merge sentiment scores with word data
+word_data_sentiment <- word_data_long |>
+  inner_join(sentiments, by = "word")
+
+# Calculate daily sentiment scores
+daily_sentiment <- word_data_sentiment %>%
+  group_by(day) %>%
+  summarize(sentiment_score = sum(frequency * score))
+
+# Merge sentiment and volatility data
+volatility_data <- data.frame(day = as.numeric(rownames(daily_sentiment)), volatility = V)
+analysis_data <- merge(daily_sentiment, volatility_data, by = "day")
+
+summary(analysis_data)
+```
+
+Now we compute the correlation between the daily sentiment score and the volatility:\
+
+```{r}
+correlation_result <- cor(analysis_data$sentiment_score, analysis_data$volatility, use = "complete.obs")
+
+print(paste0("Correlation between sentiment and volatility:", correlation_result))
+```
+
+So we observe that the correlation is very close to 0, which suggests that there is virtually no linear relationship between the daily sentiment from the news headlines and the market volatility that day.
+
+To see if we can identify any trends we can look at the plot:\
+
+```{r}
+# Plot the results
+ggplot(analysis_data, aes(x = sentiment_score, y = volatility)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "blue") +
+  labs(title = "Correlation between Daily Sentiment and Market Volatility", x = "Sentiment Score", y = "Volatility")
+```
+
+So although there is little evidence to suggest any linear relationship. However there could be a possibility for non-linear or more complex relationships between the sentiment of the daily news and volatility.
+
+Further, there is noticeable variation in the range of volatility for each sentiment score. It seems that the closer the daily sentiment is to being between -10 and 0, the larger the variation, however having a more extreme sentiment score seem to have less variability. But we cannot make such a conclusion just from looking at the graph alone, and this may be explained due to other the lack of days with extreme sentiment scores in our data set.
+
+Overall, from our analysis we cannot conclude that their is any clear impact of the daily sentiment on market volatility. However, in order to refine the analysis, we could try and take a more nuanced approach by considering sentiment thresholds and investigating whether extreme sentiments have a different effect compared to moderate ones.
+
+It should be noted that the sentiment dictionary is limited, and does not include general topics, names, or events which often have a sentiment attached to them in practice. A further approach to improve our sentiment analysis might be to categorize news based on content using tools that account for context and intensity.
