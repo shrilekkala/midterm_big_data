@@ -10,16 +10,22 @@ output:
 
 ## 24 April 2024
 
-### Setup
-
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, 
-                      #include = TRUE, 
-                      fig.width = 6, fig.height = 4,
-                      warning = FALSE,
-                      cache = TRUE,
-                      digits = 3,
-                      width = 48) 
+
+##########################################
+# Setup
+##########################################
+
+knitr::opts_chunk$set(
+	echo = FALSE,
+	fig.height = 4,
+	fig.width = 6,
+	warning = FALSE,
+	cache = TRUE,
+	digits = 3,
+	width = 48
+)
+ 
 
 library(readtext)
 library(SnowballC)
@@ -29,7 +35,7 @@ library(parallel)
 library(knitr)
 ```
 
-```{r}
+```{r include=FALSE}
 # Reddit news data
 data = read.csv("RedditNews.csv", header = FALSE, skip = 1)
 data[,2:3] = data[,1:2]
@@ -40,14 +46,14 @@ subset<-date=="7/1/16" # let's take a look at news headlines on 7/1/16
 # data[subset,3] # we have 24 news headlines
 ```
 
-```{r}
+```{r include=FALSE}
 # Read the DJIA data
 dj<-read.csv("DJIA.csv")
 head(dj) # Open price, highest, lowest and close price
 ndays<-nrow(dj) # 1989 days
 ```
 
-```{r}
+```{r include=FALSE}
 # Read the words
 words<-read.csv("WordsFinal.csv",header=F)
 words<-words[,1]
@@ -55,7 +61,7 @@ head(words)
 length(words)
 ```
 
-```{r}
+```{r include=FALSE}
 # Read the word-day pairings
 doc_word<-read.table("WordFreqFinal.csv",header=F)
 
@@ -78,14 +84,16 @@ spm<-spm[,index]
 
 dim(spm) # we end up with 3183 words
 ```
+Note: The full the code used in all the questions can be found in the appendix.
 
-\newpage
+## 1 Marginal Significance Screening and False Discovery
 
-## Question 1 Marginal Significance Screening and False Discovery
+```{r include=FALSE}
 
-Setup
+##########################################
+# (1.1)
+##########################################
 
-```{r}
 #  *** FDR *** analysis
 spm<-spm[-ndays,]
 time<-dj[-ndays,1]
@@ -94,13 +102,15 @@ time<-dj[-ndays,1]
 par(mfrow=c(1,2))
 R<-(dj[-ndays,7]-dj[-1,7])/dj[-1,7]
 plot(R~as.Date(time),type="l")
+title("Returns against time")
 
 # Take the log of the maximal spread
 V<-log(dj[-ndays,3]-dj[-ndays,4])
 plot(V~as.Date(time),type="l")
+title("Volatility against time")
 ```
 
-```{r}
+```{r echo=FALSE}
 # FDR: we want to pick a few words that correlate with the outcomes (returns and volatility)
 
 # create a dense matrix of word presence
@@ -114,9 +124,9 @@ margreg <- function(x){
 }
 ```
 
-### 1.1 Plot the p-values and comment on their distributions (for both outcomes V and R). Is there enough signal to predict prices and volatility?
+### Question (1.1)
 
-```{r}
+```{r echo=FALSE}
 # **** Analysis for Returns ****
 cl <- makeCluster(detectCores())
 
@@ -140,7 +150,9 @@ mrgpvals_V <- unlist(parLapply(cl,P,margreg))
 stopCluster(cl)
 ```
 
-```{r}
+$$\\[0.125in]$$
+
+```{r echo=FALSE, fig.dim = c(7, 3.75)}
 # Combine the p-values into a data frame for easy plotting
 pvals <- data.frame(Returns = mrgpvals_R, Volatility = mrgpvals_V)
 
@@ -148,10 +160,16 @@ pvals <- data.frame(Returns = mrgpvals_R, Volatility = mrgpvals_V)
 # Plotting the histograms of p-values
 
 # Histogram for Returns
-hist(mrgpvals_R, breaks = 50, main = "Histogram of P-Values for Returns", xlab = "P-Value", ylab = "Frequency", col="blue")
+hist(mrgpvals_R, breaks = 50, main = NULL, xlab = "P-Value", ylab = "Frequency", col="blue")
+title("Histogram of P-Values for Returns", line=1)
+```
+$$\\[0.1in]$$
 
+
+```{r echo=FALSE, fig.dim = c(7, 3.75)}
 # Histogram for Volatility
-hist(mrgpvals_V, breaks = 50, main = "Histogram of P-Values for Volatility", xlab = "P-Value", ylab = "Frequency", col="red")
+hist(mrgpvals_V, breaks = 50, main = NULL, xlab = "P-Value", ylab = "Frequency", col="red")
+title("Histogram of P-Values for Volatility", line=0.1)
 
 ```
 
@@ -161,15 +179,22 @@ The histogram of p-values for returns, R, seems to be fairly uniform but seems t
 
 However for volatility, V, the p-values have a clear spike near 0 and seem to be skewed towards the right. The large amount of p-values near 0 suggests there might indeed be a signal for some words to predict volatility.
 
-### 1.2 What is the alpha value (p-value cutoff) associated with 10% False Discovery Rate? How many words are significant at this level? (Again analyze both outcomes V and R.) What are the advantages and disadvantages of FDR for word selection?
+### Question (1.2)
 
-```{r}
-# # To find the p-value cut off we first order the p values
+```{r echo=FALSE}
+
+##########################################
+# (1.2)
+##########################################
+
+# To find the p-value cut off we first order the p values
 mrgpvals_R_ordered <- mrgpvals_R[order(mrgpvals_R, decreasing=F)]
 mrgpvals_V_ordered <- mrgpvals_V[order(mrgpvals_V, decreasing=F)]
 
 source("fdr.R")
+```
 
+```{r echo=TRUE}
 mgr_p_R = length(mrgpvals_R_ordered)
 mrg_cutoff_R <- fdr_cut(mrgpvals_R_ordered, q=0.1)
 mrg_cutoff_R
@@ -185,7 +210,7 @@ At the 10% False Discovery rate, the p-value cutoff is:
 
 -   $3.571 \times 10^{-4}$ (4.s.f) for V
 
-```{r}
+```{r echo=TRUE}
 # Number of significant words at alpha level 0.1
 significant_R <- sum(mrgpvals_R < mrg_cutoff_R)
 significant_R
@@ -195,27 +220,33 @@ significant_V
 
 At this FDR level, there are 0 words are significant for R and 11 words significant for V.
 
-\-
-
 The main advantages of using FDR analysis for word selection is the ability to handle large datasets and do computations in parallel. So as an initial stage for analyzing which words are important, this method is computationally efficient compared to others. Further, as we are explicitly controlling the expected number of false discoveries, this method allows for a more reliable selection of significant results.
 
 However, the FDR method relies on the assumption that each test is independent. This is not necessarily true for words in headlines as words can occur simultaneously. Further, we completely disregard the structure of groups of words / phrases by treating each word independently. Another disadvantage is that the FDR analysis only selects words based on the magnitude of the association but not their direction, so we cannot use this to select only words with positive or negative association.
 
-### 1.3 Now, focus only on volatility V. Suppose you just mark the 20 smallest p-values as significant. How many of these discoveries do you expect to be false? Are the p-values independent? Discuss.
+### Question (1.3)
 
 Just marking the 20 smallest p-values without using any testing correction like FDR lacks statistical control over the expected number of false discoveries. So we cannot estimate the expected number of false discoveries. However, if we used the discoveries using a 10% FDR from above, then we can expect 10% of the 11 words, i.e. 1.1 of them to be false discoveries.
 
 However, it is unlikely that the p-values are independent as words in language are usually correlated. So some words are likely to appear next to each other, and the presence of one word could mean that another word is more likely to appear. This is true with news headlines which often have common or repeated phrases, which means that some words appear frequently with other words.
 
-So taking into account the lack of independence, we may assume that the expected number of false discoveries is even higher due to dependencies between words not being taken into account. So in conclusion, a more rigorous statistical method should be applied to find significant words rather than simply marking the smallest n as significant.
+Thus, taking into account the lack of independence, we may assume that the expected number of false discoveries is even higher due to dependencies between words not being taken into account. So in conclusion, a more rigorous statistical method should be applied to find significant words rather than simply marking the smallest n as significant.
 
 \newpage
 
-## Question 2 LASSO Variable Selection and Bootstrapping
+## 2 LASSO Variable Selection and Bootstrapping
 
-### 2.1 Use the LASSO method to come up with a combination of a few words that predict returns R. Pick a lambda and comment on the in-sample R\^2. Is there enough evidence to conclude that headlines predict returns?
+### Question (2.1)
 
-```{r}
+```{r echo=FALSE}
+
+##########################################
+# (2.1)
+##########################################
+
+```
+
+```{r echo=TRUE}
 # First analyze returns 
 lasso1 <- gamlr(spm, y=R, lambda.min.ratio=1e-3)
 plot(lasso1)
@@ -223,7 +254,7 @@ plot(lasso1)
 
 The top 10 most predictive words from this model are computed below:
 
-```{r}
+```{r echo=TRUE}
 betas <- drop(coef(lasso1)) # AICc default selection 
 non_zero_betas = betas[betas!=0][-1] # Exclude intercept and filter out zero betas
 
@@ -232,7 +263,7 @@ o<-order(non_zero_betas,decreasing=TRUE)
 kable(non_zero_betas[o[1:10]])
 ```
 
-```{r}
+```{r echo=TRUE}
 # Pick lambda using the AICc
 lambda_1 = lasso1$lambda[which.min(AICc(lasso1))]
 paste0("The AICc pick for lambda is: ", lambda_1[1])
@@ -246,9 +277,17 @@ paste0("The in-sample $R^2$ is: ", 1-dev/dev0)
 
 The in-sample $R^2$ is 0.07200122 which suggests there is not much signal. This means that approximately 7.2% of the variance in returns R is explained by the LASSO model based on word frequencies from the headlines. Having a low $R^2$ score suggests that is not sufficient evidence to conclude that headlines predict returns.
 
-### 2.2 Repeat the analysis from (2.1) to predict Volatility instead of Returns.
+### Question (2.2)
 
-```{r}
+```{r echo=FALSE}
+
+##########################################
+# (2.2)
+##########################################
+
+```
+
+```{r echo=TRUE}
 # **** LASSO Analysis of volatility **** #
 lasso2 <- gamlr(spm, y=V, lambda.min.ratio=1e-3)
 betas2 <- drop(coef(lasso2)) # AICc default selection 
@@ -259,7 +298,7 @@ o <- order(non_zero_betas2,decreasing=TRUE)
 kable(non_zero_betas2[o[1:10]])
 ```
 
-```{r}
+```{r echo=TRUE}
 # Pick lambda using the AICc
 lambda_2 = lasso2$lambda[which.min(AICc(lasso2))]
 paste0("The AICc pick for lambda is: ", lambda_2[1])
@@ -272,19 +311,19 @@ paste0("The in-sample $R^2$ is: ", 1-dev_2/dev0_2)
 
 So the in-sample $R^2$ for this model to predict volatility is greater than the previous one for returns, which suggests a stronger signal for prediction.
 
-### Next, add one extra predictor, Volatility on a previous day. In other words, fit a LASSO model for predicting today’s volatility $V_t$ using word counts and yesterday’s volatility $V_{t - 1}$.
+------------------------------------------------------------------------
 
-$V_t = a + b V_{t-1} + x'_t \beta + \epsilon_t$
+Now we fit a LASSO model for: $V_t = a + b V_{t-1} + x'_t \beta + \epsilon_t$
 
-What is the in-sample R2 now? Describe the LASSO path and pick the top 10 strongest coefficients. What is the interpretation of the coefficient of word ”terrorist” and of $V_{t - 1}$?
-
-```{r}
+```{r echo=FALSE}
 # predict future volatility from past volatility
 Previous <- log(dj[-1,3]-dj[-1,4]) # remove the last return
 spm2 <- cbind(Previous,spm) # add the previous return to the model matrix
 colnames(spm2)[1]<-"previous" # the first column is the previous volatility
 lasso3 <- gamlr(spm2, y=V, lambda.min.ratio=1e-3)
+```
 
+```{r echo=TRUE}
 # Pick lambda using the AICc
 lambda_3 = lasso3$lambda[which.min(AICc(lasso3))]
 
@@ -296,14 +335,18 @@ paste0("The in-sample $R^2$ is: ", 1-dev_3/dev0_3)
 
 So the in-sample $R^2$ of the third model is much greater than the previous 2 models, and suggests an even stronger signal, so adding the previous day's volatility increased our predictive power.
 
-```{r}
+$$\\[0.1in]$$
+
+```{r echo=FALSE}
 plot(lasso3)
 title("LASSO path for third lasso model")
 ```
 
-From the plot of the coefficients vs lambda, we observe that the model iteratively selects coefficients of different words to become 0 as the value of lambda increases. The dotted vertical line corresponds to the log value of the lambda selected by the AICc. The coefficients all tend to 0 fairly sequentially as lambda decreases, however there is one coefficient that remains non-zero as lambda increases, and only drops to 0 after a significant rise in lambda. This is likely to be the coefficient for the previous day's volatility ( $V_{t-1}$ ).
+From the plot of the coefficients vs lambda, we observe that the model iteratively selects coefficients of different words to become 0 as the value of lambda increases. The dotted vertical line corresponds to the log value of the lambda selected by the AICc.
 
-```{r}
+The coefficients all tend to 0 fairly sequentially as lambda decreases, however there is one coefficient that remains non-zero as lambda increases, and only drops to 0 after a significant rise in lambda. This is likely to be the coefficient for the previous day's volatility ($V_{t-1}$).
+
+```{r echo=TRUE}
 # Choose top 10 strongest coefficients in this model
 betas3 <- drop(coef(lasso3)) # AICc default selection 
 non_zero_betas3 = betas3[betas3!=0][-1] # Exclude intercept and filter out zero betas
@@ -315,7 +358,7 @@ kable(non_zero_betas3[o[1:10]])
 
 The top 10 strongest coefficients are listed above.
 
-```{r}
+```{r echo=TRUE}
 # coefficients
 coef_terrorist = betas3[names(betas3)=="terrorist"]
 paste0("The coefficient of the word terrorist is: ", coef_terrorist)
@@ -325,17 +368,18 @@ coef_prev_v = betas3[names(betas3)=="previous"][1]
 paste0("The coefficient of $V_{t-1}$ is: ", coef_prev_v)
 ```
 
-So the coefficient of the word "terrorist" suggests a small but positive association between the word appearing in headlines and market volatility that day. So the appearance of the word "terrorist" suggest that the market will increase in volatility by $\approx$ 0.0178 units keeping everything else constant. This may be
+The coefficient of the word "terrorist" suggests a small but positive association between the word appearing in headlines and market volatility that day. So the appearance of the word "terrorist" suggests that the market will increase in volatility by $\approx$ 0.0178 units keeping everything else constant.
 
 The coefficient of the previous day's volatility is positive and large suggesting that the previous day's volatility has a strong positive effect on the current day's volatility. That is, a increase in the yesterday's volatility by 1 unit leads to an expected increase in today's volatility by $\approx$ 0.458 units, keeping other factors fixed. So $V_{t-1}$ is a critical component in forecasting $V_t$ .
 
-### 2.3 Consider the estimated of lambda selected by AICc in the model from (2.2) (using both words and $V_{t - 1}$). We want to know how variable this estimate is. The starter script has code to bootstrap the sampling distribution for the $\lambda$ selected by AICc in this regression.
+### Question (2.3)
 
-– What is the standard error for the selected $\lambda$?
+```{r echo=FALSE}
 
-– Find the 95% CI for $\lambda$?
+##########################################
+# (2.3)
+##########################################
 
-```{r}
 # Bootstrap to obtain s.e. of 1.s.e. chosen lambda
 
 # We apply bootstrap to approximate the sampling distribution of lambda selected by AICc
@@ -367,13 +411,13 @@ boxplot(lambda_samp)
 title("Boxplot of 100 lambdas from bootsrap samples")
 ```
 
-The summary statistics for the bootstrap samples are:\
-
-```{r}
+The summary statistics for the bootstrap samples are:
+$$\\[0.1in]$$
+```{r echo=FALSE}
 summary(lambda_samp)
 ```
 
-```{r}
+```{r echo=TRUE}
 # Original estimate of lambda
 paste0("The original estimated lambda from 2.2 is: ", lambda_3)
 
@@ -382,55 +426,62 @@ se = sqrt(mean((lambda_samp - lambda_3)**2))
 paste0("The standard error for the selected lambda is: ", se)
 ```
 
-```{r}
+```{r echo=TRUE}
 # Compute the 95% confidence interval
 lower = lambda_3 - 1.96 * se
 upper = lambda_3 + 1.96 * se
 
-print(paste0("The confidence interval for the selected lambda is: [", lower, ",", upper, "]"))
+print(paste0("The 95% CI for the selected lambda is: [", lower, ",", upper, "]"))
 ```
 
-However we note that the original lambda selected in (2.2) is significantly different from the mean of the bootstrapped samples.
-
-So we can repeat the same calculations using the mean of the bootstraps as new estimate for lambda
-
-```{r}
-hist(lambda_samp, xlim=c(0, 0.025))
+```{r echo=FALSE}
+hist(lambda_samp, xlim=c(0, 0.025), main="Histogram of bootstrapped lambdas", xlab="lambda")
 abline(v=lambda_3, col=2)					
 ```
 
-The red line on the histogram indicates the estimated lambda from the full sample in (2.2). This shows that our estimated lambda is very far from our bootstrap sampling distribution, which suggest
-
-The picture shows that our full sample AICc estimate is near the low end of the sampling distribution; there is high variability in the estimator and this leads us to question the robustness and reliability of the original estimate.
+The red line on the histogram indicates the estimated lambda from (2.2). This shows that our our full sample AICc lambda is very far from our bootstrap sampling distribution.  
+This suggests that there is high variability in the estimator and this leads us to question the robustness and reliability of the original estimate.
 
 \newpage
 
-## Question 3 High-dimensional Controls and Double LASSO
+## 3 High-dimensional Controls and Double LASSO
 
-### 3.1 Explore a marginal regression (just a regression of $V_t$ on $V_{t - 1}$) to see if there is any correlation. Predict d from x (headlines words), and comment on the degree of confounding we can expect. Is there any information in d independent of x?
+### Question (3.1)
 
-```{r}
+```{r include=FALSE}
+
+##########################################
+# (3.1)
+##########################################
+
 # High-dimensional Covariate Adjustment 
 d <- Previous # this is the treatment
-
 # marginal effect of past on present volatility
 summary(glm(V~d)) 
 ```
 
-The coefficient of d is 0.51195 is positive and significant (p-value \<2e-16) which suggests a strong positive correlation between d and V. That is, for a one-unit increase in yesterday's volatility, we can expect an increase of $\approx$ 0.512 units in today's volatility.
+```{r echo=TRUE}
+summary(glm(V~d))$coef
+```
 
-```{r}
+The coefficient of d is 0.51195 is positive and significant (p-value \< 2e-16) which suggests a strong positive correlation between d and V. That is, for a one-unit increase in yesterday's volatility, we can expect an increase of $\approx$ 0.512 units in today's volatility.
+
+```{r echo=TRUE}
 # LASSO model to predict d from x
 treat <- gamlr(spm, d, lambda.min.ratio=1e-4)
 
 # Isolate d_hat (the part of treatment that we can predict with x's)
 d_hat = predict(treat, spm)
+```
 
+```{r echo=FALSE}
 # Plot d_hat against d
-plot(d, drop(d_hat))
+plot(d, drop(d_hat), ylab="d_hat")
 abline(a=0, b=1, col=2)
 title("Predicted d vs actual d")
+```
 
+```{r echo=TRUE}
 # In-sample R2
 print(paste0("R2: ", cor(d, drop(d_hat))^2))
 ```
@@ -443,15 +494,23 @@ As the words explain more than 1/3 of the amount of variance in $V_{t-1}$, we ca
 
 However, there is still $\approx$ 63.5% of unexplained variance in $V_{t-1}$ which suggests that there is significant information in d that is independent of x.
 
-### 3.2 Isolate the effect of $V_{t - 1}$ by running the causal (double) LASSO. Interpret this effect and compare it to the effect obtained from the naive LASSO.
+### Question (3.2)
 
-```{r}
+```{r echo=FALSE}
+
+##########################################
+# (3.2)
+##########################################
+
+```
+
+```{r echo=TRUE}
 # Second Stage LASSO
 causal <-  gamlr(cbind(d, d_hat, spm), V, free=2)
 print(paste0("The coefficient of d from 2-stage LASSO is: ", coef(causal)["d",]))
 ```
 
-```{r}
+```{r echo=TRUE}
 # Naive LASSO
 naive <- gamlr(cbind(d, spm), V)
 print(paste0("The coefficient of d from naive LASSO is: ", coef(naive)["d",]))
@@ -461,7 +520,7 @@ The effect of $V_{t-1}$ from the causal LASSO is $\approx$ 0.36 which is fairly 
 
 However we also observe that there is an effect when running naive LASSO, and in fact it is greater in magnitude ($\approx$ 0.46). This difference in magnitude might be attributed to the confounding influence of the words in the headlines.
 
-### 3.3 Can we safely claim that the effect is causal?
+### Question (3.3)
 
 By implementing a double LASSO, we did manage to effectively control for the observed confounders x (the words in the headlines that might influence both $V_{t}$ and $V_{t-1}$), and the coefficient we obtained was not insignificant.
 
@@ -477,11 +536,16 @@ Thus although we cannot claim for certain the effect is causal, we can claim tha
 
 ## Bonus Freestyle Analysis
 
-### Provide additional analysis of the data. Points will handed out only for insightful use of data mining tools, not for scattershot application of techniques.
-
 We will try to perform sentiment analysis of the news headlines to try and correlate it with stock market volatility.
 
-```{r}
+(Note the full code can be found in the appendix.)
+
+```{r echo=FALSE}
+
+##########################################
+# (BONUS)
+##########################################
+
 library(Matrix)
 library(dplyr)
 library(tidyr)
@@ -502,7 +566,9 @@ word_data_long <- word_data_long |> filter(frequency > 0)
 # Merge sentiment scores with word data
 word_data_sentiment <- word_data_long |>
   inner_join(sentiments, by = "word")
+```
 
+```{r echo=TRUE}
 # Calculate daily sentiment scores
 daily_sentiment <- word_data_sentiment %>%
   group_by(day) %>%
@@ -515,25 +581,30 @@ analysis_data <- merge(daily_sentiment, volatility_data, by = "day")
 summary(analysis_data)
 ```
 
-Now we compute the correlation between the daily sentiment score and the volatility:\
+Now we compute the correlation between the daily sentiment score and the volatility: 
 
-```{r}
-correlation_result <- cor(analysis_data$sentiment_score, analysis_data$volatility, use = "complete.obs")
+```{r echo=TRUE}
+correlation_result <- cor(analysis_data$sentiment_score, analysis_data$volatility)
 
 print(paste0("Correlation between sentiment and volatility:", correlation_result))
 ```
 
 So we observe that the correlation is very close to 0, which suggests that there is virtually no linear relationship between the daily sentiment from the news headlines and the market volatility that day.
 
-To see if we can identify any trends we can look at the plot:\
+To see if we can identify any trends we can look at the plot:
 
-```{r}
+$$\\[0.1in]$$
+
+```{r echo=FALSE}
 # Plot the results
 ggplot(analysis_data, aes(x = sentiment_score, y = volatility)) +
   geom_point() +
-  geom_smooth(method = "lm", color = "blue") +
-  labs(title = "Correlation between Daily Sentiment and Market Volatility", x = "Sentiment Score", y = "Volatility")
+  geom_smooth(formula = y ~ x, method = "lm", color = "blue") +
+  labs(title = "Correlation between Daily Sentiment and Market Volatility",
+       x = "Sentiment Score", y = "Volatility")
 ```
+
+$$\\[0.1in]$$
 
 So although there is little evidence to suggest any linear relationship. However there could be a possibility for non-linear or more complex relationships between the sentiment of the daily news and volatility.
 
@@ -542,3 +613,10 @@ Further, there is noticeable variation in the range of volatility for each senti
 Overall, from our analysis we cannot conclude that their is any clear impact of the daily sentiment on market volatility. However, in order to refine the analysis, we could try and take a more nuanced approach by considering sentiment thresholds and investigating whether extreme sentiments have a different effect compared to moderate ones.
 
 It should be noted that the sentiment dictionary is limited, and does not include general topics, names, or events which often have a sentiment attached to them in practice. A further approach to improve our sentiment analysis might be to categorize news based on content using tools that account for context and intensity.
+
+\newpage
+
+## Appendix
+
+```{r, ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+```
