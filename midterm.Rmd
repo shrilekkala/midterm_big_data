@@ -26,6 +26,7 @@ library(SnowballC)
 library(tidytext)
 library(gamlr)
 library(parallel)
+library(knitr)
 ```
 
 ```{r}
@@ -196,7 +197,7 @@ At this FDR level, there are 0 words are significant for R and 11 words signific
 
 \-
 
-The main advantages of using FDR analysis for word selection is the ability to handle large datasets 	and do computations in parallel. So as an initial stage for analyzing which words are important, this method is computationally efficient compared to others. Further, as we are explicitly controlling the expected number of false discoveries, this method allows for a more reliable selection of significant results.
+The main advantages of using FDR analysis for word selection is the ability to handle large datasets and do computations in parallel. So as an initial stage for analyzing which words are important, this method is computationally efficient compared to others. Further, as we are explicitly controlling the expected number of false discoveries, this method allows for a more reliable selection of significant results.
 
 However, the FDR method relies on the assumption that each test is independent. This is not necessarily true for words in headlines as words can occur simultaneously. Further, we completely disregard the structure of groups of words / phrases by treating each word independently. Another disadvantage is that the FDR analysis only selects words based on the magnitude of the association but not their direction, so we cannot use this to select only words with positive or negative association.
 
@@ -214,17 +215,193 @@ So taking into account the lack of independence, we may assume that the expected
 
 ### 2.1 Use the LASSO method to come up with a combination of a few words that predict returns R. Pick a lambda and comment on the in-sample R\^2. Is there enough evidence to conclude that headlines predict returns?
 
-### 2.2 Repeat the analysis from (2.1) to predict Volatility instead of Returns. Next, add one extra predictor, Volatility on a previous day. In other words, fit a LASSO model for predicting today’s volatility $V_t$ using word counts and yesterday’s volatility $V_{t - 1}$.
+```{r}
+# First analyze returns 
+lasso1 <- gamlr(spm, y=R, lambda.min.ratio=1e-3)
+plot(lasso1)
+```
+
+The top 10 most predictive words from this model are computed below:
+
+```{r}
+betas <- drop(coef(lasso1)) # AICc default selection 
+non_zero_betas = betas[betas!=0][-1] # Exclude intercept and filter out zero betas
+
+# Choose 10 most predictive words in this model
+o<-order(non_zero_betas,decreasing=TRUE) 
+kable(non_zero_betas[o[1:10]])
+```
+
+```{r}
+# Pick lambda using the AICc
+lambda_1 = lasso1$lambda[which.min(AICc(lasso1))]
+paste0("The AICc pick for lambda is: ", lambda_1[1])
+
+
+# Compute the in-sample R2
+dev <- lasso1$deviance[which.min(AICc(lasso1))] # deviance #of the AICc selected model
+dev0<- lasso1$deviance[1] # null deviance
+paste0("The in-sample $R^2$ is: ", 1-dev/dev0)
+```
+
+The in-sample $R^2$ is 0.07200122 which suggests there is not much signal. This means that approximately 7.2% of the variance in returns R is explained by the LASSO model based on word frequencies from the headlines. Having a low $R^2$ score suggests that is not sufficient evidence to conclude that headlines predict returns.
+
+### 2.2 Repeat the analysis from (2.1) to predict Volatility instead of Returns.
+
+```{r}
+# **** LASSO Analysis of volatility **** #
+lasso2 <- gamlr(spm, y=V, lambda.min.ratio=1e-3)
+betas2 <- drop(coef(lasso2)) # AICc default selection 
+non_zero_betas2 = betas2[betas2!=0][-1] # Exclude intercept and filter out zero betas
+
+# Choose 10 most predictive words in this model
+o <- order(non_zero_betas2,decreasing=TRUE) 
+kable(non_zero_betas2[o[1:10]])
+```
+
+```{r}
+# Pick lambda using the AICc
+lambda_2 = lasso2$lambda[which.min(AICc(lasso2))]
+paste0("The AICc pick for lambda is: ", lambda_2[1])
+
+# Compute the in-sample R2
+dev_2 <- lasso2$deviance[which.min(AICc(lasso2))] # deviance #of the AICc selected model
+dev0_2<- lasso2$deviance[1] # null deviance
+paste0("The in-sample $R^2$ is: ", 1-dev_2/dev0_2)
+```
+
+So the in-sample $R^2$ for this model to predict volatility is greater than the previous one for returns, which suggests a stronger signal for prediction.
+
+### Next, add one extra predictor, Volatility on a previous day. In other words, fit a LASSO model for predicting today’s volatility $V_t$ using word counts and yesterday’s volatility $V_{t - 1}$.
 
 $V_t = a + b V_{t-1} + x'_t \beta + \epsilon_t$
 
 What is the in-sample R2 now? Describe the LASSO path and pick the top 10 strongest coefficients. What is the interpretation of the coefficient of word ”terrorist” and of $V_{t - 1}$?
+
+```{r}
+# predict future volatility from past volatility
+Previous<-log(dj[-1,3]-dj[-1,4]) # remove the last return
+spm2<-cbind(Previous,spm) # add the previous return to the model matrix
+colnames(spm2)[1]<-"previous" # the first column is the previous volatility
+lasso3<- gamlr(spm2, y=V, lambda.min.ratio=1e-3)
+
+# Pick lambda using the AICc
+lambda_3 = lasso3$lambda[which.min(AICc(lasso3))]
+
+# Compute the in-sample R2
+dev_3 <- lasso3$deviance[which.min(AICc(lasso3))] # deviance #of the AICc selected model
+dev0_3<- lasso3$deviance[1] # null deviance
+paste0("The in-sample $R^2$ is: ", 1-dev_3/dev0_3)
+```
+
+So the in-sample $R^2$ of the third model is much greater than the previous 2 models, and suggests an even stronger signal, so adding the previous day's volatility increased our predictive power.
+
+```{r}
+plot(lasso3)
+title("LASSO path for third lasso model")
+```
+
+From the plot of the coefficients vs lambda, we observe that the model iteratively selects coefficients of different words to become 0 as the value of lambda increases. The dotted vertical line corresponds to the log value of the lambda selected by the AICc. The coefficients all tend to 0 fairly sequentially as lambda decreases, however there is one coefficient that remains non-zero as lambda increases, and only drops to 0 after a significant rise in lambda. This is likely to be the coefficient for the previous day's volatility ( $V_{t-1}$ ).
+
+```{r}
+# Choose top 10 strongest coefficients in this model
+betas3 <- drop(coef(lasso3)) # AICc default selection 
+non_zero_betas3 = betas3[betas3!=0][-1] # Exclude intercept and filter out zero betas
+
+# Choose 10 most predictive words in this model
+o <- order(non_zero_betas3,decreasing=TRUE) 
+kable(non_zero_betas3[o[1:10]])
+```
+
+The top 10 strongest coefficients are listed above.
+
+```{r}
+# coefficients
+coef_terrorist = betas3[names(betas3)=="terrorist"]
+paste0("The coefficient of the word terrorist is: ", coef_terrorist)
+
+# V_{t-1}
+coef_prev_v = betas3[names(betas3)=="previous"][1]
+paste0("The coefficient of $V_{t-1}$ is: ", coef_prev_v)
+```
+
+So the coefficient of the word "terrorist" suggests a small but positive association between the word appearing in headlines and market volatility that day. So the appearance of the word "terrorist" suggest that the market will increase in volatility by $\approx$ 0.0178 units keeping everything else constant. This may be
+
+The coefficient of the previous day's volatility is positive and large suggesting that the previous day's volatility has a strong positive effect on the current day's volatility. That is, a increase in the yesterday's volatility by 1 unit leads to an expected increase in today's volatility by $\approx$ 0.458 units, keeping other factors fixed. So $V_{t-1}$ is a critical component in forecasting $V_t$ .
 
 ### 2.3 Consider the estimated of lambda selected by AICc in the model from (2.2) (using both words and $V_{t - 1}$). We want to know how variable this estimate is. The starter script has code to bootstrap the sampling distribution for the $\lambda$ selected by AICc in this regression.
 
 – What is the standard error for the selected $\lambda$?
 
 – Find the 95% CI for $\lambda$?
+
+```{r}
+# Bootstrap to obtain s.e. of 1.s.e. chosen lambda
+
+# We apply bootstrap to approximate the sampling distribution of lambda selected by AICc
+
+# export the data to the clusters
+cl <- makeCluster(detectCores())
+
+Outcome<-V
+clusterExport(cl,"spm2")
+clusterExport(cl,"V")
+
+# run 100 bootstrap resample fits
+boot_function <- function(ib){
+	require(gamlr)
+	fit <- gamlr(spm2[ib,],y=V[ib], lambda.min.ratio=1e-3)
+	fit$lambda[which.min(AICc(fit))]
+}
+
+boots <- 100
+n <- nrow(spm2)
+resamp <- as.data.frame(
+			matrix(sample(1:n,boots*n,replace=TRUE),
+			ncol=boots))
+
+lambda_samp <- unlist(parLapply(cl,resamp,boot_function))
+stopCluster(cl)
+
+boxplot(lambda_samp)
+title("Boxplot of 100 lambdas from bootsrap samples")
+```
+
+The summary statistics for the bootstrap samples are:\
+
+```{r}
+summary(lambda_samp)
+```
+
+```{r}
+# Original estimate of lambda
+paste0("The original estimated lambda from 2.2 is: ", lambda_3)
+
+# Compute Standard Error
+se = sqrt(mean((lambda_samp - lambda_3)**2))
+paste0("The standard error for the selected lambda is: ", se)
+```
+
+```{r}
+# Compute the 95% confidence interval
+lower = lambda_3 - 1.96 * se
+upper = lambda_3 + 1.96 * se
+
+print(paste0("The confidence interval for the selected lambda is: [", lower, ",", upper, "]"))
+```
+
+However we note that the original lambda selected in (2.2) is significantly different from the mean of the bootstrapped samples.
+
+So we can repeat the same calculations using the mean of the bootstraps as new estimate for lambda
+
+```{r}
+hist(lambda_samp, xlim=c(0, 0.025))
+abline(v=lambda_3, col=2)					
+```
+
+The red line on the histogram indicates the estimated lambda from the full sample in (2.2). This shows that our estimated lambda is very far from our bootstrap sampling distribution, which suggest
+
+The picture shows that our full sample AICc estimate is near the low end of the sampling distribution; there is high variability in the estimator and this leads us to question the robustness and reliability of the original estimate.
 
 \newpage
 
