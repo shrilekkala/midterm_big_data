@@ -1,14 +1,15 @@
 ---
+title: BUS 41201 Big Data Midterm
+subtitle: Shri Lekkala, 24 April 2024
+
 output:
-  pdf_document: default
-  html_document: default
+  pdf_document: 
+    toc: true
+    toc_depth: 3
+  html_document:
+    toc: true
+    toc_float: true
 ---
-
-# BUS 41201 Big Data Midterm
-
-## Shri Lekkala
-
-## 24 April 2024
 
 ```{r setup, include=FALSE}
 
@@ -84,7 +85,10 @@ spm<-spm[,index]
 
 dim(spm) # we end up with 3183 words
 ```
+
 Note: The full the code used in all the questions can be found in the appendix.
+
+\newpage
 
 ## 1 Marginal Significance Screening and False Discovery
 
@@ -163,8 +167,8 @@ pvals <- data.frame(Returns = mrgpvals_R, Volatility = mrgpvals_V)
 hist(mrgpvals_R, breaks = 50, main = NULL, xlab = "P-Value", ylab = "Frequency", col="blue")
 title("Histogram of P-Values for Returns", line=1)
 ```
-$$\\[0.1in]$$
 
+$$\\[0.1in]$$
 
 ```{r echo=FALSE, fig.dim = c(7, 3.75)}
 # Histogram for Volatility
@@ -411,8 +415,8 @@ boxplot(lambda_samp)
 title("Boxplot of 100 lambdas from bootsrap samples")
 ```
 
-The summary statistics for the bootstrap samples are:
-$$\\[0.1in]$$
+The summary statistics for the bootstrap samples are: $$\\[0.1in]$$
+
 ```{r echo=FALSE}
 summary(lambda_samp)
 ```
@@ -439,7 +443,7 @@ hist(lambda_samp, xlim=c(0, 0.025), main="Histogram of bootstrapped lambdas", xl
 abline(v=lambda_3, col=2)					
 ```
 
-The red line on the histogram indicates the estimated lambda from (2.2). This shows that our our full sample AICc lambda is very far from our bootstrap sampling distribution.  
+The red line on the histogram indicates the estimated lambda from (2.2). This shows that our our full sample AICc lambda is very far from our bootstrap sampling distribution.\
 This suggests that there is high variability in the estimator and this leads us to question the robustness and reliability of the original estimate.
 
 \newpage
@@ -581,7 +585,7 @@ analysis_data <- merge(daily_sentiment, volatility_data, by = "day")
 summary(analysis_data)
 ```
 
-Now we compute the correlation between the daily sentiment score and the volatility: 
+Now we compute the correlation between the daily sentiment score and the volatility:
 
 ```{r echo=TRUE}
 correlation_result <- cor(analysis_data$sentiment_score, analysis_data$volatility)
